@@ -175,7 +175,7 @@ def unimodal(mode, data, classes):
     # with open('./mosei/text_glove_average.pickle', 'rb') as handle:
     if data == 'mosei' or data == 'mosi':
         with open('./dataset/{0}/raw/{1}_{2}way.pickle'.format(data, mode, classes), 'rb') as handle:
-            u = pickle._Unpickler(handle)
+            u = pickle.Unpickler(handle)
             u.encoding = 'latin1'
             # (train_data, train_label, test_data, test_label, maxlen, train_length, test_length) = u.load()
             if data == 'mosei':
@@ -394,7 +394,7 @@ if __name__ == "__main__":
 
     if not args.use_raw:
         with open('unimodal_{0}_{1}way.pickle'.format(args.data, args.classes), 'rb') as handle:
-            u = pickle._Unpickler(handle)
+            u = pickle.Unpickler(handle)
             u.encoding = 'latin1'
             unimodal_activations = u.load()
 
