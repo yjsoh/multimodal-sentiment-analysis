@@ -1,6 +1,7 @@
 import argparse
 import pickle
 import sys
+import time
 
 import numpy as np
 
@@ -386,7 +387,10 @@ if __name__ == "__main__":
         print("Training unimodals first")
         modality = ['text', 'audio', 'video']
         for mode in modality:
+            start = time.clock()
             unimodal(mode, args.data, args.classes)
+            end = time.clock()
+            print("Modal %s: %s" % (mode, end - start))
 
         print("Saving unimodal activations")
         with open('unimodal_{0}_{1}way.pickle'.format(args.data, args.classes), 'wb') as handle:
