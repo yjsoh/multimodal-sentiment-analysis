@@ -288,10 +288,12 @@ class LSTM_Model():
         # To calculate accuracy we want to divide by the number of non-padded time-steps,
         # rather than taking the mean
         self.accuracy = tf.reduce_sum(tf.cast(correct, tf.float32)) / tf.reduce_sum(tf.cast(self.seq_len, tf.float32))
+        tf.summary.scalar('accuracy', self.accuracy)
         # y = tf.argmax(self.y, -1)
 
         loss = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output, labels=self.y)
         loss = loss * self.mask
+        tf.summary.tensor_summary('loss', loss)
 
         self.loss = tf.reduce_sum(loss) / tf.reduce_sum(self.mask)
 

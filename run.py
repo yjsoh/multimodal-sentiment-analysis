@@ -17,6 +17,8 @@ from model import LSTM_Model
 
 from sklearn.metrics import f1_score
 
+from tensorflow.python.client import timeline
+
 tf.set_random_seed(seed)
 
 unimodal_activations = {}
@@ -88,6 +90,8 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                                    emotions=classes, attn_fusion=attn_fusion,
                                    unimodal=False, enable_attn_2=enable_attn_2,
                                    seed=seed)
+                merged = tf.summary.merge_all()
+                train_writer = tf.summary.FileWriter('/tmp' + '/train', sess.graph)
                 sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer()))
 
                 test_feed_dict = {
@@ -109,10 +113,17 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                 step, loss, accuracy = sess.run(
                     [model.global_step, model.loss, model.accuracy],
                     test_feed_dict)
-                print("EVAL: epoch {}: step {}, loss {:g}, acc {:g}".format(0, step, loss, accuracy))
+                # print("EVAL: epoch {}: step {}, loss {:g}, acc {:g}".format(0, step, loss, accuracy))
 
+                # fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+                # chrome_trace = fetched_timeline.generate_chrome_trace_format()
+                # with open("/tmp/" + "multi_mer.json", 'w') as f:
+                #     f.write(chrome_trace)
+
+                # builder = tf.profiler.ProfileOptionBuilder
+                # opts = builder(builder.time_and_memory()).order_by('micros').build()
                 for epoch in range(epochs):
-                    epoch += 1
+                    # epoch += 1
 
                     batches = batch_iter(list(
                         zip(text_train, audio_train, video_train, train_mask, seqlen_train, train_label)),
@@ -138,25 +149,32 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                             model.dropout: 0.2,
                             model.dropout_lstm_out: 0.2
                         }
+                        # yj
+                        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                        run_metadata = tf.RunMetadata()
 
-                        _, step, loss, accuracy = sess.run(
-                            [model.train_op, model.global_step, model.loss, model.accuracy],
-                            feed_dict)
+                        summary, _, step, loss, accuracy = sess.run(
+                            [merged, model.train_op, model.global_step, model.loss, model.accuracy],
+                            feed_dict, options=options, run_metadata=run_metadata)
                         l.append(loss)
                         a.append(accuracy)
 
-                    print("\t \tEpoch {}:, loss {:g}, accuracy {:g}".format(epoch, np.average(l), np.average(a)))
+                        train_writer.add_run_metadata(run_metadata, 'epoch%d_step%d' % (epoch, step))
+                        train_writer.add_summary(summary)
+                        train_writer.flush()
+
+                    # print("\t \tEpoch {}:, loss {:g}, accuracy {:g}".format(epoch, np.average(l), np.average(a)))
                     # Evaluation after epoch
                     step, loss, accuracy, preds, y, mask = sess.run(
                         [model.global_step, model.loss, model.accuracy, model.preds, model.y, model.mask],
                         test_feed_dict)
-                    f1 = f1_score(np.ndarray.flatten(tf.argmax(y, -1, output_type=tf.int32).eval()),
-                                  np.ndarray.flatten(tf.argmax(preds, -1, output_type=tf.int32).eval()),
-                                  sample_weight=np.ndarray.flatten(tf.cast(mask, tf.int32).eval()), average="weighted")
-                    print("EVAL: After epoch {}: step {}, loss {:g}, acc {:g}, f1 {:g}".format(epoch, step,
-                                                                                               loss / test_label.shape[
-                                                                                                   0],
-                                                                                               accuracy, f1))
+                    # f1 = f1_score(np.ndarray.flatten(tf.argmax(y, -1, output_type=tf.int32).eval()),
+                    #               np.ndarray.flatten(tf.argmax(preds, -1, output_type=tf.int32).eval()),
+                    #               sample_weight=np.ndarray.flatten(tf.cast(mask, tf.int32).eval()), average="weighted")
+                    # print("EVAL: After epoch {}: step {}, loss {:g}, acc {:g}, f1 {:g}".format(epoch, step,
+                    #                                                                            loss / test_label.shape[
+                    #                                                                                0],
+                    #                                                                            accuracy, f1))
                     if accuracy > best_acc:
                         best_epoch = epoch
                         best_acc = accuracy
