@@ -17,13 +17,14 @@ from model import LSTM_Model
 
 from sklearn.metrics import f1_score
 
-from tensorflow.python.client import timeline
+#from tensorflow.python.client import timeline
 
 tf.set_random_seed(seed)
 
 unimodal_activations = {}
 
 
+# stat_every=20
 def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_attn_2=False, use_raw=True):
     if use_raw:
         if attn_fusion:
@@ -80,6 +81,7 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
     best_loss = 10000000.0
     best_epoch = 0
     best_epoch_loss = 0
+    # _cnt = 0
     with tf.device('/device:GPU:%d' % gpu_device):
         print('Using GPU - ', '/device:GPU:%d' % gpu_device)
         with tf.Graph().as_default():
@@ -91,7 +93,7 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                                    unimodal=False, enable_attn_2=enable_attn_2,
                                    seed=seed)
                 merged = tf.summary.merge_all()
-                train_writer = tf.summary.FileWriter('/tmp' + '/train', sess.graph)
+                #train_writer = tf.summary.FileWriter('/tmp' + '/train', sess.graph)
                 sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer()))
 
                 test_feed_dict = {
@@ -121,7 +123,7 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                 #     f.write(chrome_trace)
 
                 # builder = tf.profiler.ProfileOptionBuilder
-                # opts = builder(builder.time_and_memory()).order_by('micros').build()
+                # opts = builder(builder.time_and_memory()).order_by('micros').build())
                 for epoch in range(epochs):
                     # epoch += 1
 
@@ -130,10 +132,18 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                         batch_size)
 
                     # Training loop. For each batch...
-                    print('\nTraining epoch {}'.format(epoch))
+                    # print('\nTraining epoch {}'.format(epoch))
                     l = []
                     a = []
-                    for i, batch in tqdm(enumerate(batches)):
+
+                    for i, batch in enumerate(batches):
+                        print('\nTraining epoch %d, _cnt=%d' % (epoch, _cnt))
+                        # if _cnt % stat_every == 0:
+                            # yj
+                            # print('Created RunMetadata')
+                            #options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                            #run_metadata = tf.RunMetadata()
+
                         b_text_train, b_audio_train, b_video_train, b_train_mask, b_seqlen_train, b_train_label = zip(
                             *batch)
                         # print('batch_hist_v', len(batch_utt_v))
@@ -149,19 +159,21 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                             model.dropout: 0.2,
                             model.dropout_lstm_out: 0.2
                         }
-                        # yj
-                        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-                        run_metadata = tf.RunMetadata()
 
                         summary, _, step, loss, accuracy = sess.run(
                             [merged, model.train_op, model.global_step, model.loss, model.accuracy],
-                            feed_dict, options=options, run_metadata=run_metadata)
+                            feed_dict)
+                            #feed_dict, options=options, run_metadata)
                         l.append(loss)
                         a.append(accuracy)
 
-                        train_writer.add_run_metadata(run_metadata, 'epoch%d_step%d' % (epoch, step))
-                        train_writer.add_summary(summary)
-                        train_writer.flush()
+                        # if _cnt % stat_every == (stat_every - 1):
+                        #     print('Saved RunMetadata')
+                            #train_writer.add_run_metadata(run_metadata, 'step%03d' % (step - 1))
+                            #train_writer.add_summary(summary)
+                            #train_writer.flush()
+                            #open("/home/yj/train/data_per_batch_epoch/epoch_%03d_stepstats_%03d.pbtxt" % (epoch, _cnt), "w").write(str(run_metadata.step_stats))
+                        # _cnt += 1
 
                     # print("\t \tEpoch {}:, loss {:g}, accuracy {:g}".format(epoch, np.average(l), np.average(a)))
                     # Evaluation after epoch
@@ -392,7 +404,9 @@ if __name__ == "__main__":
     parser.add_argument("--use_raw", type=str2bool, nargs='?', const=True, default=False)
     parser.add_argument("--data", type=str, default='mosi')
     parser.add_argument("--classes", type=str, default='2')
+    # parser.add_argument("--stat_every", type=int, default=20)
     args, _ = parser.parse_known_args(argv)
+    # stat_every = args.stat_every
 
     print(args)
 
