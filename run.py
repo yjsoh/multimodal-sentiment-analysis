@@ -1,6 +1,7 @@
 import argparse
 import pickle
 import sys
+import yaml
 
 import numpy as np
 
@@ -10,7 +11,6 @@ seed = 1234
 
 np.random.seed(seed)
 import tensorflow as tf
-from tqdm import tqdm
 
 from model import LSTM_Model
 
@@ -20,19 +20,51 @@ tf.set_random_seed(seed)
 
 unimodal_activations = {}
 
+# FLAGS
+tf.flags.DEFINE_boolean("unimodal", False, "Whether to use the unimodal model for training or not")
+tf.flags.DEFINE_boolean("fusion", False, "Whether to use the unimodal model for training or not")
+tf.flags.DEFINE_boolean("attention_2", False, "Whether to use the second attention method or not(?)")
+tf.flags.DEFINE_boolean("use_raw", False, "Whether to use the second attention method or not(?)")
+tf.flags.DEFINE_string("data", "mosi", "which data set to use {mosi, mosei, iemocap}")
+tf.flags.DEFINE_integer("classes", 2, "how many classes to use {2, 3, 6} for mosi, mosei, iemocap respectively")
 
-def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_attn_2=False, use_raw=True):
+# run configuration
+tf.flags.DEFINE_integer("gpu_device", 0, "which gpu device to use")
+tf.flags.DEFINE_integer("batch_size", 20, "batch size")
+tf.flags.DEFINE_integer("epochs", 50, "epochs")
+tf.flags.DEFINE_integer("verbose", 0, "verbosity")
+
+FLAGS = tf.flags.FLAGS
+
+#def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_attn_2=False, use_raw=True):
+def multimodal(unimodal_activations):
+    data=FLAGS.data
+    classes=FLAGS.classes
+    attn_fusion=FLAGS.fusion
+    enable_attn_2=FLAGS.attention_2
+    use_raw = FLAGS.use_raw
+    gpu_device = FLAGS.gpu_device
+    epochs=FLAGS.epochs
+    batch_size=FLAGS.batch_size
+
     if use_raw:
         if attn_fusion:
             attn_fusion = False
 
-        train_data, test_data, audio_train, audio_test, text_train, text_test, video_train, video_test, train_label, test_label, seqlen_train, seqlen_test, train_mask, test_mask = get_raw_data(
-            data, classes)
+        train_data, test_data,     \
+        audio_train, audio_test,   \
+        text_train, text_test,     \
+        video_train, video_test,   \
+        train_label, test_label,   \
+        seqlen_train, seqlen_test, \
+        train_mask, test_mask = get_raw_data(data, classes)
 
     else:
-        print("starting multimodal")
-        # Fusion (appending) of features
 
+        if FLAGS.verbose >= 0:
+            print("starting multimodal")
+
+        # Fusion (appending) of features
         text_train = unimodal_activations['text_train']
         audio_train = unimodal_activations['audio_train']
         video_train = unimodal_activations['video_train']
@@ -44,24 +76,26 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
         train_mask = unimodal_activations['train_mask']
         test_mask = unimodal_activations['test_mask']
 
-        print('train_mask', train_mask.shape)
-
         train_label = unimodal_activations['train_label']
-        print('train_label', train_label.shape)
         test_label = unimodal_activations['test_label']
-        print('test_label', test_label.shape)
 
-        # print(train_mask_bool)
         seqlen_train = np.sum(train_mask, axis=-1)
-        print('seqlen_train', seqlen_train.shape)
         seqlen_test = np.sum(test_mask, axis=-1)
-        print('seqlen_test', seqlen_test.shape)
+
+        if FLAGS.verbose >= 1:
+            print('train_mask', train_mask.shape)
+            print('train_label', train_label.shape)
+            print('test_label', test_label.shape)
+            print('seqlen_train', seqlen_train.shape)
+            print('seqlen_test', seqlen_test.shape)
 
     a_dim = audio_train.shape[-1]
     v_dim = video_train.shape[-1]
     t_dim = text_train.shape[-1]
-    if attn_fusion:
+
+    if attn_fusion and FLAGS.verbose >= 1:
         print('With attention fusion')
+
     allow_soft_placement = True
     log_device_placement = False
 
@@ -71,14 +105,12 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
         allow_soft_placement=allow_soft_placement,
         log_device_placement=log_device_placement,
         gpu_options=tf.GPUOptions(allow_growth=True))
-    gpu_device = 0
     best_acc = 0
     best_loss_accuracy = 0
     best_loss = 10000000.0
     best_epoch = 0
     best_epoch_loss = 0
     with tf.device('/device:GPU:%d' % gpu_device):
-        print('Using GPU - ', '/device:GPU:%d' % gpu_device)
         with tf.Graph().as_default():
             tf.set_random_seed(seed)
             sess = tf.Session(config=session_conf)
@@ -102,29 +134,30 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                     model.dropout_lstm_out: 0.0
                 }
 
-                # print('\n\nDataset: %s' % (data))
-                print("\nEvaluation before training:")
-                # Evaluation after epoch
+                if FLAGS.verbose >= 0:
+                    print("Evaluation before training:")
+
                 step, loss, accuracy = sess.run(
                     [model.global_step, model.loss, model.accuracy],
                     test_feed_dict)
-                print("EVAL: epoch {}: step {}, loss {:g}, acc {:g}".format(0, step, loss, accuracy))
+
+                if FLAGS.verbose >= 0:
+                    print("EVAL: epoch {}: step {}, loss {:g}, acc {:g}".format(0, step, loss, accuracy))
 
                 for epoch in range(epochs):
-                    epoch += 1
+                    # original
+                    # epoch += 1
 
                     batches = batch_iter(list(
                         zip(text_train, audio_train, video_train, train_mask, seqlen_train, train_label)),
                         batch_size)
 
                     # Training loop. For each batch...
-                    print('\nTraining epoch {}'.format(epoch))
                     l = []
                     a = []
-                    for i, batch in tqdm(enumerate(batches)):
-                        b_text_train, b_audio_train, b_video_train, b_train_mask, b_seqlen_train, b_train_label = zip(
-                            *batch)
-                        # print('batch_hist_v', len(batch_utt_v))
+                    for i, batch in enumerate(batches):
+                        b_text_train, b_audio_train, b_video_train, b_train_mask, b_seqlen_train, b_train_label = zip(*batch)
+
                         feed_dict = {
                             model.t_input: b_text_train,
                             model.a_input: b_audio_train,
@@ -140,11 +173,12 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
 
                         _, step, loss, accuracy = sess.run(
                             [model.train_op, model.global_step, model.loss, model.accuracy],
-                            feed_dict)
+                            feed_dict
+                        )
+
                         l.append(loss)
                         a.append(accuracy)
 
-                    print("\t \tEpoch {}:, loss {:g}, accuracy {:g}".format(epoch, np.average(l), np.average(a)))
                     # Evaluation after epoch
                     step, loss, accuracy, preds, y, mask = sess.run(
                         [model.global_step, model.loss, model.accuracy, model.preds, model.y, model.mask],
@@ -152,10 +186,10 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                     f1 = f1_score(np.ndarray.flatten(tf.argmax(y, -1, output_type=tf.int32).eval()),
                                   np.ndarray.flatten(tf.argmax(preds, -1, output_type=tf.int32).eval()),
                                   sample_weight=np.ndarray.flatten(tf.cast(mask, tf.int32).eval()), average="weighted")
-                    print("EVAL: After epoch {}: step {}, loss {:g}, acc {:g}, f1 {:g}".format(epoch, step,
-                                                                                               loss / test_label.shape[
-                                                                                                   0],
-                                                                                               accuracy, f1))
+
+                    if FLAGS.verbose >= 0:
+                        print("EVAL: After epoch {:3}: step {:3}, loss {:g}, acc {:g}, f1 {:g}".format(epoch, step,loss / test_label.shape[0],accuracy, f1))
+
                     if accuracy > best_acc:
                         best_epoch = epoch
                         best_acc = accuracy
@@ -164,9 +198,9 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                         best_loss_accuracy = accuracy
                         best_epoch_loss = epoch
 
-                print(
-                    "\n\nBest epoch: {}\nBest test accuracy: {}\nBest epoch loss: {}\nBest test accuracy when loss is least: {}".format(
-                        best_epoch, best_acc, best_epoch_loss, best_loss_accuracy))
+                if FLAGS.verbose >= 0:
+                    print("Best epoch: {}\nBest test accuracy: {}\nBest epoch loss: {}\nBest test accuracy when loss is least: {}"
+                        .format(best_epoch, best_acc, best_epoch_loss, best_loss_accuracy))
 
 
 def unimodal(mode, data, classes):
@@ -292,7 +326,7 @@ def unimodal(mode, data, classes):
                     print('\nTraining epoch {}'.format(epoch))
                     l = []
                     a = []
-                    for i, batch in tqdm(enumerate(batches)):
+                    for i, batch in enumerate(batches):
                         b_train_data, b_train_mask, b_seqlen_train, b_train_label = zip(
                             *batch)
                         feed_dict = {
@@ -364,39 +398,54 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
+
 if __name__ == "__main__":
-    argv = sys.argv[1:]
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--unimodal", type=str2bool, nargs='?', const=True, default=True)
-    parser.add_argument("--fusion", type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument("--attention_2", type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument("--use_raw", type=str2bool, nargs='?', const=True, default=False)
-    parser.add_argument("--data", type=str, default='mosi')
-    parser.add_argument("--classes", type=str, default='2')
-    args, _ = parser.parse_known_args(argv)
+   # Original
+   # argv = sys.argv[1:]
+   # parser = argparse.ArgumentParser()
+   # parser.add_argument("--unimodal", type=str2bool, nFLAGS='?', const=True, default=True)
+   # parser.add_argument("--fusion", type=str2bool, nFLAGS='?', const=True, default=False)
+   # parser.add_argument("--attention_2", type=str2bool, nFLAGS='?', const=True, default=False)
+   # parser.add_argument("--use_raw", type=str2bool, nFLAGS='?', const=True, default=False)
+   # parser.add_argument("--data", type=str, default='mosi')
+   # parser.add_argument("--classes", type=str, default='2')
+   # FLAGS, _ = parser.parse_known_FLAGS(argv)
 
-    print(args)
+   # print(FLAGS)
 
-    batch_size = 20
-    epochs = 100
-    emotions = args.classes
-    assert args.data in ['mosi', 'mosei', 'iemocap']
+   # batch_size = 20
+   # epochs = 100
+   # emotions = FLAGS.classes
 
-    if args.unimodal:
-        print("Training unimodals first")
-        modality = ['text', 'audio', 'video']
-        for mode in modality:
-            unimodal(mode, args.data, args.classes)
+    # YJ
+    with open('CDSA.config.yml', 'r') as f:
+        config = yaml.safe_load(f)
+        for k,v in config.items():
+            if isinstance(v, str):
+                v="'%s'" % (v)
+            exec("FLAGS.%s=%s" % (k,v))
+    assert FLAGS.data in ['mosi', 'mosei', 'iemocap']
 
-        print("Saving unimodal activations")
-        with open('unimodal_{0}_{1}way.pickle'.format(args.data, args.classes), 'wb') as handle:
-            pickle.dump(unimodal_activations, handle, protocol=pickle.HIGHEST_PROTOCOL)
+   # if FLAGS.unimodal:
+   #     print("Training unimodals first")
+   #     modality = ['text', 'audio', 'video']
+   #     for mode in modality:
+   #         unimodal(mode, FLAGS.data, FLAGS.classes)
 
-    if not args.use_raw:
-        with open('unimodal_{0}_{1}way.pickle'.format(args.data, args.classes), 'rb') as handle:
+   #     print("Saving unimodal activations")
+   #     with open('unimodal_{0}_{1}way_activation.pickle'.format(FLAGS.data, FLAGS.classes), 'wb') as handle:
+   #         pickle.dump(unimodal_activations, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    if not FLAGS.use_raw:
+        with open('unimodal_{0}_{1}way.pickle'.format(FLAGS.data, FLAGS.classes), 'rb') as handle:
             u = pickle._Unpickler(handle)
             u.encoding = 'latin1'
             unimodal_activations = u.load()
 
-    epochs = 50
-    multimodal(unimodal_activations, args.data, args.classes, args.fusion, args.attention_2, use_raw=args.use_raw)
+   # epochs = 50 # for multimodal override the default 50
+    # Original
+    # multimodal(unimodal_activations, FLAGS.data, FLAGS.classes, args.fusion, args.attention_2, use_raw=args.use_raw)
+
+    # YJ
+    multimodal(unimodal_activations)
+

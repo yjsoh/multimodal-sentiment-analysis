@@ -1,0 +1,14 @@
+# args
+unimodal: False
+fusion: False
+attention_2: False
+use_raw: False
+data: "mosi"
+classes: 2
+
+# run configuration
+gpu_device: 0
+batch_size: 20
+epochs: 100
+verbose: 0
+
