@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import argparse
 import pickle
 import sys
@@ -124,6 +125,7 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
 
                 # builder = tf.profiler.ProfileOptionBuilder
                 # opts = builder(builder.time_and_memory()).order_by('micros').build())
+                epochs=3
                 for epoch in range(epochs):
                     # epoch += 1
 
@@ -137,7 +139,7 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                     a = []
 
                     for i, batch in enumerate(batches):
-                        print('\nTraining epoch %d, _cnt=%d' % (epoch, _cnt))
+                        # print('\nTraining epoch %d, _cnt=%d' % (epoch, _cnt))
                         # if _cnt % stat_every == 0:
                             # yj
                             # print('Created RunMetadata')
@@ -164,8 +166,13 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                             [merged, model.train_op, model.global_step, model.loss, model.accuracy],
                             feed_dict)
                             #feed_dict, options=options, run_metadata)
+                        print_op = print("hello")#, output_stream=sys.stdout)
+                        #with tf.control_dependencies([print_op]):
+                        #    meanling_less = accuracy * 3
+                        #sess.run(print_op)
                         l.append(loss)
                         a.append(accuracy)
+                        print("Epoch {}, Step {}".format(epoch, step))
 
                         # if _cnt % stat_every == (stat_every - 1):
                         #     print('Saved RunMetadata')
@@ -195,9 +202,7 @@ def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_att
                         best_loss_accuracy = accuracy
                         best_epoch_loss = epoch
 
-                print(
-                    "\n\nBest epoch: {}\nBest test accuracy: {}\nBest epoch loss: {}\nBest test accuracy when loss is least: {}".format(
-                        best_epoch, best_acc, best_epoch_loss, best_loss_accuracy))
+                print("\n\nBest epoch: {}\nBest test accuracy: {}\nBest epoch loss: {}\nBest test accuracy when loss is least: {}".format(best_epoch, best_acc, best_epoch_loss, best_loss_accuracy))
 
 
 def unimodal(mode, data, classes):
@@ -206,7 +211,7 @@ def unimodal(mode, data, classes):
     # with open('./mosei/text_glove_average.pickle', 'rb') as handle:
     if data == 'mosei' or data == 'mosi':
         with open('./dataset/{0}/raw/{1}_{2}way.pickle'.format(data, mode, classes), 'rb') as handle:
-            u = pickle.Unpickler(handle)
+            u = pickle._Unpickler(handle)
             u.encoding = 'latin1'
             # (train_data, train_label, test_data, test_label, maxlen, train_length, test_length) = u.load()
             if data == 'mosei':
@@ -312,6 +317,7 @@ def unimodal(mode, data, classes):
                     test_feed_dict)
                 print("EVAL: epoch {}: step {}, loss {:g}, acc {:g}".format(0, step, loss, accuracy))
 
+                epochs = 1  
                 for epoch in range(epochs):
                     epoch += 1
 
@@ -430,7 +436,7 @@ if __name__ == "__main__":
 
     if not args.use_raw:
         with open('unimodal_{0}_{1}way.pickle'.format(args.data, args.classes), 'rb') as handle:
-            u = pickle.Unpickler(handle)
+            u = pickle._Unpickler(handle)
             u.encoding = 'latin1'
             unimodal_activations = u.load()
 

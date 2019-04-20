@@ -1,4 +1,5 @@
 import tensorflow as tf
+import sys
 
 from tensorflow.python.layers.core import Dense
 
@@ -41,6 +42,7 @@ class LSTM_Model():
 
             output, _ = tf.nn.dynamic_rnn(cell, inputs, sequence_length=self.seq_len, dtype=tf.float32)
 
+            tf.print(output, ['GRU'])
             return output
 
     def GRU2(self, inputs, output_size, name, dropout_keep_rate):
@@ -60,6 +62,7 @@ class LSTM_Model():
             output_bw, _ = tf.nn.dynamic_rnn(bw_cell, inputs, sequence_length=self.seq_len, dtype=tf.float32)
 
             output = tf.concat([output_fw, output_bw], axis=-1)
+            tf.print(output, ['GRU2'])
             return output
 
     def BiGRU(self, inputs, output_size, name, dropout_keep_rate):
@@ -80,6 +83,7 @@ class LSTM_Model():
 
             output_fw, output_bw = outputs
             output = tf.concat([output_fw, output_bw], axis=-1)
+            tf.print(output, ['BiGRU'])
             return output
 
     def self_attention(self, inputs_a, inputs_v, inputs_t, name):
@@ -129,7 +133,7 @@ class LSTM_Model():
                 outputs.append(output)
 
             final_output = tf.stack(outputs, axis=1)
-            # print('final_output', final_output.get_shape())
+            print('final_output', final_output.get_shape())
             return final_output
 
     def attention(self, inputs_a, inputs_b, attention_size, params, mask=None, return_alphas=False):
@@ -192,7 +196,6 @@ class LSTM_Model():
             # Output of (Bi-)RNN is reduced with attention vector; the result has (B,D) shape
             output = tf.matmul(tf.transpose(inputs_a, [0, 2, 1]), tf.expand_dims(alphas, -1))
             output = tf.squeeze(output, -1)
-            # print('r', output.get_shape())
             # output = tf.reduce_sum(r, 1)
 
             if not return_alphas:
@@ -289,11 +292,16 @@ class LSTM_Model():
         # rather than taking the mean
         self.accuracy = tf.reduce_sum(tf.cast(correct, tf.float32)) / tf.reduce_sum(tf.cast(self.seq_len, tf.float32))
         tf.summary.scalar('accuracy', self.accuracy)
+        #print_op = tf.print(self.accuracy, output_stream=sys.stdout)
+        #with tf.control_dependencies([print_op]):
+        #    meaning_less = self.accuracy * 100
+        #sess.run(meaning_less)
         # y = tf.argmax(self.y, -1)
 
         loss = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.output, labels=self.y)
         loss = loss * self.mask
         tf.summary.tensor_summary('loss', loss)
+        tf.print(loss, [loss, 'Hello'])
 
         self.loss = tf.reduce_sum(loss) / tf.reduce_sum(self.mask)
 
@@ -311,7 +319,7 @@ class LSTM_Model():
                 variable_parameters *= dim.value
             total_parameters += variable_parameters
         # print(total_parameters)
-        print('Trainable parameters:', total_parameters)
+        # print('Trainable parameters:', total_parameters)
 
         self.loss = self.loss + 0.00001 * tf.reduce_mean(reg_loss)
         self.global_step = tf.get_variable(shape=[], initializer=tf.constant_initializer(0), dtype=tf.int32,
@@ -320,3 +328,4 @@ class LSTM_Model():
         # self._optimizer = tf.train.AdadeltaOptimizer(learning_rate=1.0, rho=0.95, epsilon=1e-08)
 
         self.train_op = self._optimizer.minimize(self.loss, global_step=self.global_step)
+
