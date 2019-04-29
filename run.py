@@ -34,6 +34,11 @@ tf.flags.DEFINE_integer("batch_size", 20, "batch size")
 tf.flags.DEFINE_integer("epochs", 50, "epochs")
 tf.flags.DEFINE_integer("verbose", 0, "verbosity")
 
+# Profiling configuration
+tf.flags.DEFINE_boolean("tfprofile", False, "Whether to enable the TF profiling functionality or not")
+tf.flags.DEFINE_integer("tfprofileEvery", 1, "How many epochs to run before saving the output")
+tf.flags.DEFINE_string("tfprofile_dir", "/tmp/tfprofile_msa", "Save profiling result to this directory")
+
 FLAGS = tf.flags.FLAGS
 
 #def multimodal(unimodal_activations, data, classes, attn_fusion=True, enable_attn_2=False, use_raw=True):
@@ -119,7 +124,11 @@ def multimodal(unimodal_activations):
                                    emotions=classes, attn_fusion=attn_fusion,
                                    unimodal=False, enable_attn_2=enable_attn_2,
                                    seed=seed)
+
+                mm_writer = tf.summary.FileWriter(FLAGS.tfprofile_dir + '/mulitmodal', sess.graph)
                 sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer()))
+                options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                run_metadata = tf.RunMetadata()
 
                 test_feed_dict = {
                     model.t_input: text_test,
@@ -148,6 +157,10 @@ def multimodal(unimodal_activations):
                     # original
                     # epoch += 1
 
+                    if FLAGS.tfprofile and epoch % FLAGS.tfprofileEvery == 0:
+                        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                        run_metadata = tf.RunMetadata()
+
                     batches = batch_iter(list(
                         zip(text_train, audio_train, video_train, train_mask, seqlen_train, train_label)),
                         batch_size)
@@ -173,11 +186,19 @@ def multimodal(unimodal_activations):
 
                         _, step, loss, accuracy = sess.run(
                             [model.train_op, model.global_step, model.loss, model.accuracy],
-                            feed_dict
+                            feed_dict,
+                            options=options,
+                            run_metadata=run_metadata
                         )
 
                         l.append(loss)
                         a.append(accuracy)
+
+                    mm_writer.add_run_metadata(run_metadata, tag=("step%03d" % epoch), global_step=epoch)
+
+                    if FLAGS.tfprofile and epoch % FLAGS.tfprofileEvery == 0:
+                        open(FLAGS.tfprofile_dir + '/' + 'epoch_%03d.pbtxt' % (epoch), "w") \
+                            .write(str(run_metadata.step_stats))
 
                     # Evaluation after epoch
                     step, loss, accuracy, preds, y, mask = sess.run(
@@ -442,7 +463,7 @@ if __name__ == "__main__":
             u.encoding = 'latin1'
             unimodal_activations = u.load()
 
-   # epochs = 50 # for multimodal override the default 50
+    # epochs = 50 # for multimodal override the default 50
     # Original
     # multimodal(unimodal_activations, FLAGS.data, FLAGS.classes, args.fusion, args.attention_2, use_raw=args.use_raw)
 

@@ -12,3 +12,6 @@ batch_size: 20
 epochs: 100
 verbose: 0
 
+tfprofile: True
+tfprofileEvery: 1
+tfprofile_dir: "/mnt/Data/yj/mm/tfprofile.msa"
